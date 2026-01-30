@@ -1,0 +1,83 @@
+#Nanoindentation Test at Z direction of Ni-Al FGM materials 
+#Created by Rehad Nayeef on 20/01/2026 at 10.14 pm 
+# Script is under developing stage
+#Loading on Z axis
+clear
+# ---------------- Initialization ----------------
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+neighbor 2.0 bin
+neigh_modify delay 0 every 1 check yes
+
+# ---------------- Structure Input ----------------
+# Read pre-built alloy structure
+read_data       alloy.lmp
+
+minimize 1.0e-6 1.0e-6 1000 10000
+
+# ---------------- Groups Definition ----------------
+region	1 block  INF INF INF INF INF 2 units box
+group	lower region 1
+region 2 block INF INF INF INF 2 4 units box
+group thermo region 2
+group mobile subtract all lower thermo
+
+
+# ---------------- Potential (MEAM for Al-Cu-Mg) ----------------
+pair_style      meam
+pair_coeff      * * library.meam Ni Ti Al NiAlTi.meam Ni Al
+
+# ---------------- Computes ----------------
+compute	        new all temp
+compute         peratom all pe/atom
+compute         csym all centro/atom fcc
+compute         disloc all displace/atom 
+
+fix		1 lower setforce 0.0 0.0 0.0
+fix     2 thermo langevin 10.0 10.0 0.01 12345
+fix     3 mobile nve
+
+# ---------------- Equilibration ----------------
+reset_timestep	0
+timestep        0.001
+velocity all create 10 12345 mom yes rot no 
+thermo          100
+thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
+
+#NVE + Temperature rescale (equilibration)
+fix 4 all nvt temp 10.0 10.0 0.01 drag 1.0
+fix 5 all temp/rescale 100 10 10 1.0 0.5
+run 50000
+unfix 4
+
+# ---------- indentation (Loading) -------------------------------------------
+reset_timestep	0
+timestep        0.001
+variable xmid equal lx/2
+variable ymid equal ly/2
+
+variable z equal "67.1-0.1*step*dt"
+
+fix 7 all indent 10.0 sphere ${xmid} ${ymid} v_z 20 units box
+#fix 11 all move linear 0.0 -0.0002 0.0 units box # downward in y
+
+# --- Output variables ---
+variable fx equal f_7[1] 
+variable fy equal f_7[2] 
+variable fz equal f_7[3] 
+variable step1 equal "step*dt" 
+variable displacement equal "(67.1 - v_z)" # penetration depth in Å 
+
+# ---------------- Thermo & Output ---------------- 
+thermo 100 
+thermo_style custom step temp v_fz v_displacement ke etotal press 
+thermo_modify lost warn 
+fix def1 all print 100 "${step1} ${fx} ${fy} ${fz} ${displacement} INDENT" file Indentation_log.txt screen no 
+dump myDump all atom 100 dump.atom 
+
+# ---------------- Run Indentation ---------------- 
+run 300000
+unfix 5 
+unfix 7
