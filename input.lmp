@@ -1,7 +1,7 @@
 #Nanoindentation Test at Z direction of Ni-Al FGM materials 
 #Created by Rehad Nayeef on 20/01/2026 at 10.14 pm 
 # Script is under developing stage
-#Loading on Z axis
+# Loading-unloading on Z axis
 clear
 # ---------------- Initialization ----------------
 units           metal
@@ -45,39 +45,72 @@ timestep        0.001
 velocity all create 10 12345 mom yes rot no 
 thermo          100
 thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
-
 #NVE + Temperature rescale (equilibration)
 fix 4 all nvt temp 10.0 10.0 0.01 drag 1.0
 fix 5 all temp/rescale 100 10 10 1.0 0.5
 run 50000
 unfix 4
 
-# ---------- indentation (Loading) -------------------------------------------
+# ---------- indentation -------------------------------------------
 reset_timestep	0
 timestep        0.001
 variable xmid equal lx/2
 variable ymid equal ly/2
+variable z_initial   equal 65.2
 
-variable z equal "67.1-0.1*step*dt"
+variable indent_depth equal 22    # Target indentation depth (Angstrom)
+variable indent_speed equal 0.1    # Indentation speed (Angstrom/ps)
+variable retract_speed equal 0.1    # Retraction speed (Angstrom/ps)
 
-fix 7 all indent 10.0 sphere ${xmid} ${ymid} v_z 20 units box
-#fix 11 all move linear 0.0 -0.0002 0.0 units box # downward in y
+# Calculate timing
+variable indent_steps equal "v_indent_depth / (v_indent_speed * dt)"
+variable retract_steps equal "v_indent_depth / (v_retract_speed * dt)"
 
 # --- Output variables ---
 variable fx equal f_7[1] 
 variable fy equal f_7[2] 
 variable fz equal f_7[3] 
 variable step1 equal "step*dt" 
-variable displacement equal "(67.1 - v_z)" # penetration depth in Å 
+variable disp equal "step*dt*v_indent_speed"
+
+dump myDump all atom 100 dump.final
+dump_modify myDump sort id 
+
+# PHASE 1: INDENTATION TO TARGET DEPTH
+#-----------------------------------------------------------------------------
+variable z equal "v_z_initial - v_indent_speed*step*dt"
+
+fix 7 all indent 10.0 sphere ${xmid} ${ymid} v_z 20 units box
+#fix 11 all move linear 0.0 -0.0002 0.0 units box # downward in y
+
 
 # ---------------- Thermo & Output ---------------- 
 thermo 100 
-thermo_style custom step temp v_fz v_displacement ke etotal press 
+thermo_style custom step temp v_fz v_disp v_z 
 thermo_modify lost warn 
-fix def1 all print 100 "${step1} ${fx} ${fy} ${fz} ${displacement} INDENT" file Indentation_log.txt screen no 
-dump myDump all atom 100 dump.atom 
+fix output1 all print 100 "${disp} ${fz}  INDENT" file Indentation_log.txt screen no 
 
-# ---------------- Run Indentation ---------------- 
-run 300000
-unfix 5 
+# Run until target depth is reached
+run ${indent_steps}
+
+# PHASE 2: RETRACTION
+#-----------------------------------------------------------------------------
+print "=== PHASE 2: RETRACTION ==="
 unfix 7
+unfix output1
+
+variable z_retract equal "(v_z_initial - v_indent_depth) + v_retract_speed*(step - v_indent_steps)*dt"
+variable disp_retract equal "v_indent_depth - (step - v_indent_steps)*dt*v_retract_speed"
+fix 7 all indent 10.0 sphere ${xmid} ${ymid} v_z_retract 20 units box
+
+#---------------- Thermo & Output ---------------- 
+thermo 100 
+thermo_style custom step temp v_fz v_disp_retract v_z_retract 
+thermo_modify lost warn 
+fix output3 all print 100 "${disp_retract} ${fz}  RETRACT" append Indentation_log.txt screen no
+
+
+# Retract to original position
+run ${retract_steps}
+
+
