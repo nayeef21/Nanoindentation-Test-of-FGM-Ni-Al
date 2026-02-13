@@ -36,18 +36,18 @@ compute         csym all centro/atom fcc
 compute         disloc all displace/atom 
 
 fix		1 lower setforce 0.0 0.0 0.0
-fix     2 thermo langevin 10.0 10.0 0.01 12345
+fix     2 thermo langevin 300.0 300.0 0.01 12345
 fix     3 mobile nve
 
 # ---------------- Equilibration ----------------
 reset_timestep	0
 timestep        0.001
-velocity all create 10 12345 mom yes rot no 
+velocity all create 300 12345 mom yes rot no 
 thermo          100
 thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
 #NVE + Temperature rescale (equilibration)
-fix 4 all nvt temp 10.0 10.0 0.01 drag 1.0
-fix 5 all temp/rescale 100 10 10 1.0 0.5
+fix 4 all nvt temp 300.0 300.0 0.01 drag 1.0
+fix 5 all temp/rescale 100 300 300 1.0 0.5
 run 50000
 unfix 4
 
