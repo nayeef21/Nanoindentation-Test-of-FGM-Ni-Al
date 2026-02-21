@@ -1,7 +1,6 @@
-#Nanoindentation Test at Z direction of Ni-Al FGM materials 
-#Created by Rehad Nayeef on 20/01/2026 at 10.14 pm 
+#Nanoindentation Test at Z direction of Ni-Al FGM materials  
 # Script is under developing stage
-# Loading-unloading on Z axis
+#Loading unloading on Z axis
 clear
 # ---------------- Initialization ----------------
 units           metal
@@ -18,14 +17,14 @@ read_data       alloy.lmp
 minimize 1.0e-6 1.0e-6 1000 10000
 
 # ---------------- Groups Definition ----------------
-region	1 block  INF INF INF INF INF 2 units box
+region	1 block  INF INF INF INF INF 3 units box
 group	lower region 1
-region 2 block INF INF INF INF 2 4 units box
+region 2 block INF INF INF INF 3 6 units box
 group thermo region 2
 group mobile subtract all lower thermo
+group newtonian subtract all lower
 
-
-# ---------------- Potential (MEAM for Al-Cu-Mg) ----------------
+# ---------------- Potential----------------
 pair_style      meam
 pair_coeff      * * library.meam Ni Ti Al NiAlTi.meam Ni Al
 
@@ -36,27 +35,28 @@ compute         csym all centro/atom fcc
 compute         disloc all displace/atom 
 
 fix		1 lower setforce 0.0 0.0 0.0
-fix     2 thermo langevin 300.0 300.0 0.01 12345
-fix     3 mobile nve
 
 # ---------------- Equilibration ----------------
 reset_timestep	0
 timestep        0.001
-velocity all create 300 12345 mom yes rot no 
+velocity newtonian create 300 12345 mom yes rot no 
 thermo          100
 thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
 #NVE + Temperature rescale (equilibration)
-fix 4 all nvt temp 300.0 300.0 0.01 drag 1.0
-fix 5 all temp/rescale 100 300 300 1.0 0.5
+fix 4 newtonian nvt temp 300.0 300.0 0.01 drag 1.0
+fix 6 all temp/rescale 100 300 300 1.0 0.5
+
 run 50000
-unfix 4
+unfix 4 
 
 # ---------- indentation -------------------------------------------
+fix     2 thermo langevin 300.0 300.0 0.01 12345
+fix     3 mobile nve
 reset_timestep	0
 timestep        0.001
 variable xmid equal lx/2
 variable ymid equal ly/2
-variable z_initial   equal 65.2
+variable z_initial   equal 67.2
 
 variable indent_depth equal 22    # Target indentation depth (Angstrom)
 variable indent_speed equal 0.1    # Indentation speed (Angstrom/ps)
@@ -112,5 +112,4 @@ fix output3 all print 100 "${disp_retract} ${fz}  RETRACT" append Indentation_lo
 
 # Retract to original position
 run ${retract_steps}
-
 
