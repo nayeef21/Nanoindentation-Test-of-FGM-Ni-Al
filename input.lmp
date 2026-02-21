@@ -1,4 +1,4 @@
-#Nanoindentation Test at Z direction of Ni-Al FGM materials  
+# Nanoindentation Test at Z direction of Ni-Al FGM materials  
 # Script is under developing stage
 #Loading unloading on Z axis
 clear
@@ -29,47 +29,64 @@ pair_style      meam
 pair_coeff      * * library.meam Ni Ti Al NiAlTi.meam Ni Al
 
 # ---------------- Computes ----------------
+# Temperature control
 compute	        new all temp
 compute         peratom all pe/atom
 compute         csym all centro/atom fcc
 compute         disloc all displace/atom 
 
-fix		1 lower setforce 0.0 0.0 0.0
 
-# ---------------- Equilibration ----------------
+velocity all create 10 12345 temp new
+
+# Temperature relaxation 
+fix 1 all nve 
+fix 2 all langevin 10.0 10.0 0.01 12345
+
 reset_timestep	0
 timestep        0.001
-velocity newtonian create 300 12345 mom yes rot no 
 thermo          100
 thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
-#NVE + Temperature rescale (equilibration)
-fix 4 newtonian nvt temp 300.0 300.0 0.01 drag 1.0
-fix 6 all temp/rescale 100 300 300 1.0 0.5
+thermo_modify temp new norm yes
+run 20000
 
-run 50000
-unfix 4 
+unfix 1
+unfix 2
+
+# ---------------- Final pressure relaxation ----------------
+fix 3 all npt temp 10 10 1.0 x 0 0 5.0 y 0 0 5.0 couple xy
+reset_timestep	0
+timestep        0.001
+thermo          100
+thermo_style    custom step lx ly lz press pxx pyy pzz pe temp
+thermo_modify temp new norm yes
+run 20000
+unfix 3
 
 # ---------- indentation -------------------------------------------
-fix     2 thermo langevin 300.0 300.0 0.01 12345
-fix     3 mobile nve
+fix		4 lower setforce 0.0 0.0 0.0
+velocity lower set 0.0 0.0 0.0
+#fix 5 mobile temp/rescale 100 300 300 1.0 1.0
+fix 6 mobile nve
+#fix  7 thermo langevin 300.0 300.0 1.0 12345
+
 reset_timestep	0
 timestep        0.001
 variable xmid equal lx/2
 variable ymid equal ly/2
-variable z_initial   equal 67.2
+variable z_initial   equal 63.2
 
 variable indent_depth equal 22    # Target indentation depth (Angstrom)
-variable indent_speed equal 0.1    # Indentation speed (Angstrom/ps)
-variable retract_speed equal 0.1    # Retraction speed (Angstrom/ps)
+variable indent_speed equal 0.2    # Indentation speed (Angstrom/ps)
+variable retract_speed equal 0.2    # Retraction speed (Angstrom/ps)
 
 # Calculate timing
 variable indent_steps equal "v_indent_depth / (v_indent_speed * dt)"
 variable retract_steps equal "v_indent_depth / (v_retract_speed * dt)"
 
 # --- Output variables ---
-variable fx equal f_7[1] 
-variable fy equal f_7[2] 
-variable fz equal f_7[3] 
+variable fx equal f_8[1] 
+variable fy equal f_8[2] 
+variable fz equal f_8[3] 
 variable step1 equal "step*dt" 
 variable disp equal "step*dt*v_indent_speed"
 
@@ -80,14 +97,14 @@ dump_modify myDump sort id
 #-----------------------------------------------------------------------------
 variable z equal "v_z_initial - v_indent_speed*step*dt"
 
-fix 7 all indent 10.0 sphere ${xmid} ${ymid} v_z 20 units box
+fix 8 all indent 10.0 sphere ${xmid} ${ymid} v_z 20 units box
 #fix 11 all move linear 0.0 -0.0002 0.0 units box # downward in y
 
 
 # ---------------- Thermo & Output ---------------- 
 thermo 100 
 thermo_style custom step temp v_fz v_disp v_z 
-thermo_modify lost warn 
+thermo_modify temp new norm yes 
 fix output1 all print 100 "${disp} ${fz}  INDENT" file Indentation_log.txt screen no 
 
 # Run until target depth is reached
@@ -96,20 +113,25 @@ run ${indent_steps}
 # PHASE 2: RETRACTION
 #-----------------------------------------------------------------------------
 print "=== PHASE 2: RETRACTION ==="
-unfix 7
+unfix 8
 unfix output1
 
 variable z_retract equal "(v_z_initial - v_indent_depth) + v_retract_speed*(step - v_indent_steps)*dt"
 variable disp_retract equal "v_indent_depth - (step - v_indent_steps)*dt*v_retract_speed"
-fix 7 all indent 10.0 sphere ${xmid} ${ymid} v_z_retract 20 units box
+fix 8 all indent 10.0 sphere ${xmid} ${ymid} v_z_retract 20 units box
 
 #---------------- Thermo & Output ---------------- 
 thermo 100 
 thermo_style custom step temp v_fz v_disp_retract v_z_retract 
-thermo_modify lost warn 
+thermo_modify temp new norm yes
 fix output3 all print 100 "${disp_retract} ${fz}  RETRACT" append Indentation_log.txt screen no
 
 
 # Retract to original position
 run ${retract_steps}
+unfix 8
+unfix output3
+
+
+
 
